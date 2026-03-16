@@ -11,20 +11,20 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #0F172A;
-    --surface: #1E293B;
-    --surface2: #263348;
-    --text: #F1F5F9;
-    --ready: #10B981;
-    --wait: #F59E0B;
-    --result: #3B82F6;
-    --error: #EF4444;
-    --muted: #94A3B8;
-    --border: rgba(148,163,184,0.12);
-    --glow-ready: rgba(16,185,129,0.3);
-    --glow-wait: rgba(245,158,11,0.3);
-    --glow-result: rgba(59,130,246,0.3);
-    --glow-error: rgba(239,68,68,0.3);
+    --bg: #E8F0FB;
+    --surface: #FFFFFF;
+    --surface2: #D6E4F7;
+    --text: #1E293B;
+    --ready: #059669;
+    --wait: #D97706;
+    --result: #2563EB;
+    --error: #DC2626;
+    --muted: #64748B;
+    --border: rgba(100,116,139,0.18);
+    --glow-ready: rgba(5,150,105,0.25);
+    --glow-wait: rgba(217,119,6,0.25);
+    --glow-result: rgba(37,99,235,0.25);
+    --glow-error: rgba(220,38,38,0.25);
   }
 
   html, body {
@@ -100,7 +100,7 @@
   }
 
   .stat-card {
-    background: rgba(30,41,59,0.7);
+    background: rgba(255,255,255,0.75);
     backdrop-filter: blur(12px);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -151,7 +151,7 @@
     max-width: 380px;
     border-radius: 24px;
     border: 2px solid var(--border);
-    background: rgba(15,23,42,0.6);
+    background: rgba(255,255,255,0.75);
     backdrop-filter: blur(16px);
     cursor: pointer;
     position: relative;
@@ -274,8 +274,9 @@
     text-transform: uppercase;
     cursor: pointer;
     transition: all 0.2s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   }
-  .btn:hover { background: var(--surface2); border-color: rgba(148,163,184,0.3); }
+  .btn:hover { background: var(--surface2); border-color: rgba(100,116,139,0.35); }
   .btn:active { transform: scale(0.97); }
   .btn.primary {
     background: linear-gradient(135deg, #10B981, #059669);
@@ -319,7 +320,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(30,41,59,0.5);
+    background: rgba(255,255,255,0.6);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.5rem 0.85rem;
@@ -373,7 +374,7 @@
   /* -- INSTRUCTIONS OVERLAY -- */
   .instructions-overlay {
     position: fixed; inset: 0;
-    background: rgba(15,23,42,0.9);
+    background: rgba(232,240,251,0.88);
     backdrop-filter: blur(8px);
     z-index: 100;
     display: flex;
@@ -474,7 +475,7 @@
     position: fixed; inset: 0;
     background: repeating-linear-gradient(
       0deg, transparent, transparent 2px,
-      rgba(0,0,0,0.015) 2px, rgba(0,0,0,0.015) 4px
+      rgba(0,0,0,0.008) 2px, rgba(0,0,0,0.008) 4px
     );
     pointer-events: none;
     z-index: 200;
@@ -576,9 +577,9 @@
 //   THREE.JS SCENE
 // -----------------------------------------------
 const canvas = document.getElementById('three-canvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setClearColor(0x000000, 0);
+renderer.setClearColor(0xE8F0FB, 1);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
@@ -618,7 +619,7 @@ const bgGroup = new THREE.Group();
 scene.add(bgGroup);
 for (let i = 0; i < 80; i++) {
   const g = new THREE.SphereGeometry(0.025, 4, 4);
-  const m = new THREE.MeshBasicMaterial({ color: 0x1E293B });
+  const m = new THREE.MeshBasicMaterial({ color: 0xCBDAF0 });
   const mesh = new THREE.Mesh(g, m);
   mesh.position.set(
     (Math.random() - 0.5) * 20,
