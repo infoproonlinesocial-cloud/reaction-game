@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REFLEX — Reaction Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0F172A;
+    --surface: #1E293B;
+    --surface2: #263348;
+    --text: #F1F5F9;
+    --ready: #10B981;
+    --wait: #F59E0B;
+    --result: #3B82F6;
+    --error: #EF4444;
+    --muted: #94A3B8;
+    --border: rgba(148,163,184,0.12);
+    --glow-ready: rgba(16,185,129,0.3);
+    --glow-wait: rgba(245,158,11,0.3);
+    --glow-result: rgba(59,130,246,0.3);
+    --glow-error: rgba(239,68,68,0.3);
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    overflow-x: hidden;
+  }
+
+  /* -- CANVAS -- */
+  #three-canvas {
+    position: fixed; inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.85;
+  }
+
+  /* -- LAYOUT -- */
+  #app {
+    position: relative; z-index: 1;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    grid-template-columns: 1fr;
+    padding: 0 clamp(1rem,4vw,3rem);
+  }
+
+  /* -- HEADER -- */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(1.4rem,3vw,1.8rem);
+    letter-spacing: 0.25em;
+    color: var(--text);
+    text-transform: uppercase;
+    position: relative;
+  }
+  .logo span { color: var(--ready); }
+
+  .header-meta {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+
+  /* -- MAIN -- */
+  main {
+    display: grid;
+    grid-template-columns: 1fr min(480px,100%) 1fr;
+    grid-template-rows: 1fr;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem 0;
+  }
+
+  /* -- STATS SIDEBAR -- */
+  .stats-panel {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding-right: 2rem;
+  }
+
+  .stat-card {
+    background: rgba(30,41,59,0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.1rem 1.3rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--result);
+    border-radius: 2px 0 0 2px;
+  }
+  .stat-card.best::before { background: var(--ready); }
+  .stat-card.attempts::before { background: var(--wait); }
+
+  .stat-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 0.4rem;
+  }
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 1.6rem;
+    color: var(--text);
+    line-height: 1;
+  }
+  .stat-card.best .stat-value { color: var(--ready); }
+  .stat-card.attempts .stat-value { color: var(--wait); }
+
+  /* -- REACTION ZONE -- */
+  .reaction-zone {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .hit-target {
+    width: 100%;
+    aspect-ratio: 1;
+    max-width: 380px;
+    border-radius: 24px;
+    border: 2px solid var(--border);
+    background: rgba(15,23,42,0.6);
+    backdrop-filter: blur(16px);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
+    user-select: none;
+    -webkit-user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .hit-target.state-idle {
+    border-color: var(--border);
+    box-shadow: 0 0 0 rgba(0,0,0,0);
+  }
+  .hit-target.state-waiting {
+    border-color: var(--wait);
+    box-shadow: 0 0 40px var(--glow-wait), inset 0 0 60px rgba(245,158,11,0.05);
+    cursor: wait;
+  }
+  .hit-target.state-ready {
+    border-color: var(--ready);
+    box-shadow: 0 0 60px var(--glow-ready), inset 0 0 80px rgba(16,185,129,0.08);
+    cursor: crosshair;
+    animation: pulse-ready 1s ease-in-out infinite;
+  }
+  .hit-target.state-result {
+    border-color: var(--result);
+    box-shadow: 0 0 50px var(--glow-result);
+    cursor: default;
+  }
+  .hit-target.state-error {
+    border-color: var(--error);
+    box-shadow: 0 0 50px var(--glow-error);
+    cursor: default;
+    animation: shake 0.4s ease;
+  }
+
+  @keyframes pulse-ready {
+    0%, 100% { box-shadow: 0 0 40px var(--glow-ready), inset 0 0 60px rgba(16,185,129,0.06); }
+    50%       { box-shadow: 0 0 80px var(--glow-ready), inset 0 0 80px rgba(16,185,129,0.14); }
+  }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%     { transform: translateX(-8px); }
+    40%     { transform: translateX(8px); }
+    60%     { transform: translateX(-5px); }
+    80%     { transform: translateX(5px); }
+  }
+
+  .target-icon {
+    font-size: 3rem;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+  .target-heading {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: clamp(1rem,3vw,1.4rem);
+    text-align: center;
+    letter-spacing: 0.05em;
+    padding: 0 1.5rem;
+    transition: color 0.2s;
+  }
+  .target-sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0 2rem;
+  }
+
+  /* result time display */
+  .result-time {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.5rem, 10vw, 4rem);
+    color: var(--result);
+    line-height: 1;
+    display: none;
+    animation: pop-in 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .result-time.show { display: block; }
+  .result-unit {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-top: 0.25rem;
+    display: none;
+  }
+  .result-unit.show { display: block; }
+
+  @keyframes pop-in {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
+  /* -- CONTROLS -- */
+  .controls {
+    display: flex;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 0.9rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: var(--surface2); border-color: rgba(148,163,184,0.3); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary {
+    background: linear-gradient(135deg, #10B981, #059669);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* -- HISTORY SIDEBAR -- */
+  .history-panel {
+    grid-column: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-left: 2rem;
+    max-height: 380px;
+    overflow: hidden;
+  }
+
+  .history-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.4rem;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    overflow-y: auto;
+    max-height: 320px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(30,41,59,0.5);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.75rem;
+    animation: slide-in 0.25s ease;
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .history-item .h-num { color: var(--muted); width: 1.5rem; }
+  .history-item .h-val {
+    font-weight: 600;
+    color: var(--result);
+    font-family: 'Syne', sans-serif;
+  }
+  .history-item.best-item .h-val { color: var(--ready); }
+  .history-item .h-badge {
+    font-size: 0.6rem;
+    color: var(--ready);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* -- FOOTER -- */
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 0;
+    border-top: 1px solid var(--border);
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ready);
+    margin-right: 0.5rem;
+    animation: blink 2s ease infinite;
+  }
+  @keyframes blink {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+  }
+
+  /* -- INSTRUCTIONS OVERLAY -- */
+  .instructions-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15,23,42,0.9);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  .instructions-overlay.hidden { display: none; }
+
+  .instructions-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: clamp(2rem,5vw,3rem);
+    max-width: 500px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .instructions-card h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 2.5rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+  .instructions-card h1 span { color: var(--ready); }
+  .instructions-card .tagline {
+    color: var(--muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 2rem;
+  }
+
+  .how-to {
+    list-style: none;
+    text-align: left;
+    margin-bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .how-to li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .how-to .step-num {
+    min-width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .how-to .highlight { color: var(--text); font-weight: 600; }
+
+  .warning-box {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 10px;
+    padding: 0.85rem 1.1rem;
+    font-size: 0.76rem;
+    color: var(--error);
+    margin-bottom: 2rem;
+    text-align: left;
+  }
+
+  /* -- RESPONSIVE -- */
+  @media (max-width: 900px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto;
+    }
+    .stats-panel { grid-column: 1; flex-direction: row; padding-right: 0; padding-bottom: 0; }
+    .reaction-zone { grid-column: 1; }
+    .history-panel { grid-column: 1; flex-direction: column; padding-left: 0; padding-top: 0; max-height: 200px; }
+    .stat-card { flex: 1; }
+  }
+
+  @media (max-width: 480px) {
+    .stats-panel { flex-wrap: wrap; }
+    .stat-card { min-width: 45%; }
+    .hit-target { max-width: 100%; }
+    .controls { max-width: 100%; }
+  }
+
+  /* scanline overlay for atmosphere */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.015) 2px, rgba(0,0,0,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 200;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="three-canvas"></canvas>
+
+<!-- Instructions -->
+<div class="instructions-overlay" id="instructions-overlay">
+  <div class="instructions-card">
+    <h1>REF<span>L</span>EX</h1>
+    <p class="tagline">Precision Reaction Timer · Portfolio Edition</p>
+    <ol class="how-to">
+      <li>
+        <span class="step-num">1</span>
+        <span>Press <span class="highlight">Start</span> to begin. The target zone will turn <span style="color:var(--wait)">amber</span> — wait for the signal.</span>
+      </li>
+      <li>
+        <span class="step-num">2</span>
+        <span>When the zone turns <span style="color:var(--ready)">green</span> and the 3D shape explodes — <span class="highlight">click immediately</span>.</span>
+      </li>
+      <li>
+        <span class="step-num">3</span>
+        <span>Your reaction time in <span class="highlight">milliseconds</span> appears instantly. Stats update each round.</span>
+      </li>
+      <li>
+        <span class="step-num">4</span>
+        <span>Click <span class="highlight">Next</span> to attempt again, or <span class="highlight">Reset</span> to clear your session.</span>
+      </li>
+    </ol>
+    <div class="warning-box">
+      ? Don't click early — a <strong>false start</strong> will be recorded and penalised.
+    </div>
+    <button class="btn primary" id="start-intro-btn" style="width:100%;font-size:0.9rem;padding:1rem;">
+      Ready? Let's go ?
+    </button>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo">REF<span>L</span>EX</div>
+    <div class="header-meta"><span class="status-dot"></span>Reaction Timer v1.0</div>
+  </header>
+
+  <main>
+    <!-- Stats -->
+    <div class="stats-panel">
+      <div class="stat-card attempts">
+        <div class="stat-label">Attempts</div>
+        <div class="stat-value" id="stat-attempts">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average</div>
+        <div class="stat-value" id="stat-avg">—</div>
+      </div>
+      <div class="stat-card best">
+        <div class="stat-label">Best</div>
+        <div class="stat-value" id="stat-best">—</div>
+      </div>
+    </div>
+
+    <!-- Reaction Zone -->
+    <div class="reaction-zone">
+      <div class="hit-target state-idle" id="hit-target" role="button" tabindex="0" aria-label="Reaction target">
+        <div class="target-icon" id="target-icon">?</div>
+        <div class="target-heading" id="target-heading">Press Start</div>
+        <div class="target-sub" id="target-sub">Get ready to test your reflexes</div>
+        <div class="result-time" id="result-time">—</div>
+        <div class="result-unit" id="result-unit">milliseconds</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn primary" id="btn-start">Start</button>
+        <button class="btn" id="btn-reset" disabled>Reset</button>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="history-panel">
+      <div class="history-label">Session Log</div>
+      <div class="history-list" id="history-list">
+        <div style="font-size:0.72rem;color:var(--muted);text-align:center;padding:1rem 0;">No attempts yet</div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <span>Built with Three.js · Vanilla JS</span>
+    <span id="footer-status">Idle</span>
+  </footer>
+</div>
+
+<script>
+// -----------------------------------------------
+//   THREE.JS SCENE
+// -----------------------------------------------
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+camera.position.set(0, 0, 6);
+
+// Lighting
+const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0x10B981, 2);
+dirLight.position.set(3, 4, 5);
+scene.add(dirLight);
+const pointRed = new THREE.PointLight(0xF59E0B, 0, 8);
+pointRed.position.set(-3, 2, 2);
+scene.add(pointRed);
+const pointBlue = new THREE.PointLight(0x3B82F6, 0, 8);
+pointBlue.position.set(3, -2, 2);
+scene.add(pointBlue);
+
+// Shared geometry pool
+const geometries = [
+  new THREE.IcosahedronGeometry(1, 1),
+  new THREE.OctahedronGeometry(1, 0),
+  new THREE.TetrahedronGeometry(1, 0),
+  new THREE.BoxGeometry(1.4, 1.4, 1.4),
+  new THREE.TorusGeometry(0.8, 0.3, 8, 20),
+];
+
+// Main mesh
+let mainMesh = null;
+let particleSystem = null;
+let particleVelocities = [];
+const clock = new THREE.Clock();
+let sceneState = 'idle'; // idle | waiting | ready | result | error
+
+// Background floating particles
+const bgGroup = new THREE.Group();
+scene.add(bgGroup);
+for (let i = 0; i < 80; i++) {
+  const g = new THREE.SphereGeometry(0.025, 4, 4);
+  const m = new THREE.MeshBasicMaterial({ color: 0x1E293B });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(
+    (Math.random() - 0.5) * 20,
+    (Math.random() - 0.5) * 12,
+    (Math.random() - 0.5) * 4 - 2
+  );
+  mesh.userData = {
+    vx: (Math.random() - 0.5) * 0.005,
+    vy: (Math.random() - 0.5) * 0.003,
+  };
+  bgGroup.add(mesh);
+}
+
+// Ring system around main shape
+const ringGroup = new THREE.Group();
+scene.add(ringGroup);
+const ringMats = [
+  new THREE.MeshBasicMaterial({ color: 0x10B981, wireframe: true, opacity: 0, transparent: true }),
+  new THREE.MeshBasicMaterial({ color: 0x3B82F6, wireframe: true, opacity: 0, transparent: true }),
+];
+const rings = [];
+for (let i = 0; i < 2; i++) {
+  const rg = new THREE.TorusGeometry(1.8 + i * 0.5, 0.02, 4, 60);
+  const rm = new THREE.Mesh(rg, ringMats[i]);
+  rm.rotation.x = Math.PI / 4 + i * 0.5;
+  ringGroup.add(rm);
+  rings.push(rm);
+}
+
+function createMainMesh(color = 0x10B981) {
+  if (mainMesh) {
+    scene.remove(mainMesh);
+    mainMesh.geometry.dispose();
+    mainMesh.material.dispose();
+  }
+  const gIndex = Math.floor(Math.random() * geometries.length);
+  const geo = geometries[gIndex].clone();
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    metalness: 0.8,
+    roughness: 0.2,
+    wireframe: false,
+    emissive: color,
+    emissiveIntensity: 0.15,
+  });
+  mainMesh = new THREE.Mesh(geo, mat);
+  mainMesh.scale.setScalar(0.01); // start tiny
+  scene.add(mainMesh);
+}
+
+function spawnParticles(color = 0x10B981) {
+  if (particleSystem) { scene.remove(particleSystem); particleSystem = null; }
+  particleVelocities = [];
+  const count = 120;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const c = new THREE.Color(color);
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = 0;
+    positions[i * 3 + 1] = 0;
+    positions[i * 3 + 2] = 0;
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random() * 2 - 1);
+    const speed = 0.03 + Math.random() * 0.06;
+    particleVelocities.push(
+      speed * Math.sin(phi) * Math.cos(theta),
+      speed * Math.sin(phi) * Math.sin(theta),
+      speed * Math.cos(phi)
+    );
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.08, vertexColors: true, transparent: true, opacity: 1 });
+  particleSystem = new THREE.Points(geo, mat);
+  scene.add(particleSystem);
+}
+
+function resizeRenderer() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resizeRenderer();
+window.addEventListener('resize', resizeRenderer);
+
+let targetScale = 0;
+let meshColor = new THREE.Color(0x10B981);
+
+function setSceneState(state) {
+  sceneState = state;
+  if (state === 'idle') {
+    targetScale = 0;
+    dirLight.color.set(0x10B981); dirLight.intensity = 1.5;
+    pointRed.intensity = 0; pointBlue.intensity = 0;
+    ringMats.forEach(m => m.opacity = 0);
+  } else if (state === 'waiting') {
+    createMainMesh(0xF59E0B);
+    targetScale = 1;
+    meshColor.set(0xF59E0B);
+    dirLight.color.set(0xF59E0B); dirLight.intensity = 2;
+    pointRed.intensity = 3; pointBlue.intensity = 0;
+    ringMats[0].color.set(0xF59E0B); ringMats[0].opacity = 0.3;
+    ringMats[1].opacity = 0;
+  } else if (state === 'ready') {
+    if (mainMesh) { mainMesh.material.color.set(0x10B981); mainMesh.material.emissive.set(0x10B981); }
+    meshColor.set(0x10B981);
+    dirLight.color.set(0x10B981); dirLight.intensity = 3;
+    pointRed.intensity = 0; pointBlue.intensity = 4;
+    targetScale = 1.4;
+    ringMats[0].color.set(0x10B981); ringMats[0].opacity = 0.6;
+    ringMats[1].color.set(0x10B981); ringMats[1].opacity = 0.4;
+    spawnParticles(0x10B981);
+  } else if (state === 'result') {
+    if (mainMesh) { mainMesh.material.color.set(0x3B82F6); mainMesh.material.emissive.set(0x3B82F6); }
+    dirLight.color.set(0x3B82F6); dirLight.intensity = 2;
+    pointBlue.intensity = 5;
+    targetScale = 0.8;
+    ringMats[0].color.set(0x3B82F6); ringMats[0].opacity = 0.5;
+    ringMats[1].color.set(0x3B82F6); ringMats[1].opacity = 0.3;
+  } else if (state === 'error') {
+    if (mainMesh) { mainMesh.material.color.set(0xEF4444); mainMesh.material.emissive.set(0xEF4444); }
+    dirLight.color.set(0xEF4444); dirLight.intensity = 3;
+    pointRed.intensity = 6; pointBlue.intensity = 0;
+    targetScale = 0.5;
+    spawnParticles(0xEF4444);
+    ringMats[0].color.set(0xEF4444); ringMats[0].opacity = 0.7;
+    ringMats[1].color.set(0xEF4444); ringMats[1].opacity = 0;
+  }
+}
+
+// Render loop
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // bg particles drift
+  bgGroup.children.forEach(p => {
+    p.position.x += p.userData.vx;
+    p.position.y += p.userData.vy;
+    if (p.position.x > 10) p.position.x = -10;
+    if (p.position.x < -10) p.position.x = 10;
+    if (p.position.y > 6) p.position.y = -6;
+    if (p.position.y < -6) p.position.y = 6;
+  });
+
+  // Main mesh
+  if (mainMesh) {
+    mainMesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
+    if (sceneState === 'waiting') {
+      mainMesh.rotation.x = t * 0.8;
+      mainMesh.rotation.y = t * 1.1;
+      mainMesh.position.y = Math.sin(t * 1.5) * 0.12;
+    } else if (sceneState === 'ready') {
+      mainMesh.rotation.x = t * 2.5;
+      mainMesh.rotation.y = t * 3.2;
+      mainMesh.rotation.z = t * 1.8;
+    } else if (sceneState === 'result') {
+      mainMesh.rotation.y = t * 0.5;
+      mainMesh.rotation.x = t * 0.3;
+    } else if (sceneState === 'error') {
+      mainMesh.rotation.x = t * 4;
+      mainMesh.rotation.y = t * 5;
+    }
+  }
+
+  // Rings
+  rings[0].rotation.z = t * 0.4;
+  rings[1].rotation.x = t * 0.3;
+  rings[1].rotation.y = t * 0.2;
+
+  // Explosion particles
+  if (particleSystem) {
+    const pos = particleSystem.geometry.attributes.position;
+    const mat = particleSystem.material;
+    for (let i = 0; i < pos.count; i++) {
+      pos.array[i * 3]     += particleVelocities[i * 3];
+      pos.array[i * 3 + 1] += particleVelocities[i * 3 + 1];
+      pos.array[i * 3 + 2] += particleVelocities[i * 3 + 2];
+      particleVelocities[i * 3 + 1] -= 0.001; // gravity
+    }
+    pos.needsUpdate = true;
+    mat.opacity = Math.max(0, mat.opacity - 0.008);
+    if (mat.opacity <= 0) { scene.remove(particleSystem); particleSystem = null; }
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// -----------------------------------------------
+//   GAME LOGIC
+// -----------------------------------------------
+const STATES = { IDLE: 'idle', WAITING: 'waiting', READY: 'ready', RESULT: 'result', ERROR: 'error' };
+
+let state = STATES.IDLE;
+let waitTimer = null;
+let startTime = null;
+let attempts = 0;
+let times = [];
+let bestTime = Infinity;
+
+const target = document.getElementById('hit-target');
+const btnStart = document.getElementById('btn-start');
+const btnReset = document.getElementById('btn-reset');
+const targetIcon = document.getElementById('target-icon');
+const targetHeading = document.getElementById('target-heading');
+const targetSub = document.getElementById('target-sub');
+const resultTime = document.getElementById('result-time');
+const resultUnit = document.getElementById('result-unit');
+const statAttempts = document.getElementById('stat-attempts');
+const statAvg = document.getElementById('stat-avg');
+const statBest = document.getElementById('stat-best');
+const historyList = document.getElementById('history-list');
+const footerStatus = document.getElementById('footer-status');
+
+const icons = { idle: '?', waiting: '?', ready: '?', result: '?', error: '?' };
+const headings = {
+  idle: 'Press Start',
+  waiting: 'Wait for it…',
+  ready: 'NOW!',
+  error: 'Too Early!',
+};
+const subs = {
+  idle: 'Get ready to test your reflexes',
+  waiting: 'Click when the zone turns green',
+  ready: 'CLICK NOW!',
+  error: 'False start — wait for green',
+};
+
+function setState(newState, extraData = {}) {
+  state = newState;
+
+  // Update classes
+  target.className = `hit-target state-${newState}`;
+
+  // Update text
+  targetIcon.textContent = icons[newState] || icons.idle;
+
+  if (newState === STATES.RESULT) {
+    const ms = extraData.ms;
+    targetHeading.textContent = rateReaction(ms);
+    targetSub.textContent = 'Click Next to try again';
+    resultTime.textContent = ms;
+    resultTime.classList.add('show');
+    resultUnit.classList.add('show');
+  } else {
+    targetHeading.textContent = headings[newState] || '';
+    targetSub.textContent = subs[newState] || '';
+    resultTime.classList.remove('show');
+    resultUnit.classList.remove('show');
+  }
+
+  // 3D scene
+  setSceneState(newState);
+
+  // Footer
+  const statusMap = { idle: 'Idle', waiting: 'Waiting…', ready: '? GO!', result: `Result: ${extraData.ms || '—'}ms`, error: 'False Start!' };
+  footerStatus.textContent = statusMap[newState] || '';
+}
+
+function rateReaction(ms) {
+  if (ms < 150) return '?? Superhuman!';
+  if (ms < 200) return '? Excellent!';
+  if (ms < 250) return '? Great!';
+  if (ms < 300) return 'Good';
+  if (ms < 400) return 'Average';
+  return 'Keep practicing';
+}
+
+function startGame() {
+  clearTimeout(waitTimer);
+  startTime = null;
+
+  setState(STATES.WAITING);
+  btnStart.textContent = 'Stop';
+  btnStart.classList.remove('primary');
+  btnReset.disabled = false;
+
+  const delay = 1000 + Math.random() * 4000; // 1–5s
+  waitTimer = setTimeout(() => {
+    if (state !== STATES.WAITING) return;
+    setState(STATES.READY);
+    startTime = performance.now();
+  }, delay);
+}
+
+function handleClick() {
+  if (state === STATES.IDLE) return;
+
+  if (state === STATES.WAITING) {
+    // False start
+    clearTimeout(waitTimer);
+    setState(STATES.ERROR);
+    attempts++;
+    times.push(null); // false start marker
+    updateStats();
+    addHistory(null);
+    btnStart.textContent = 'Next';
+    btnStart.classList.remove('primary');
+    return;
+  }
+
+  if (state === STATES.READY) {
+    const ms = Math.round(performance.now() - startTime);
+    attempts++;
+    times.push(ms);
+    if (ms < bestTime) bestTime = ms;
+    setState(STATES.RESULT, { ms });
+    updateStats();
+    addHistory(ms);
+    btnStart.textContent = 'Next';
+    btnStart.classList.add('primary');
+    return;
+  }
+
+  if (state === STATES.RESULT || state === STATES.ERROR) {
+    startGame();
+  }
+}
+
+function resetGame() {
+  clearTimeout(waitTimer);
+  state = STATES.IDLE;
+  startTime = null;
+  attempts = 0;
+  times = [];
+  bestTime = Infinity;
+
+  setState(STATES.IDLE);
+  btnStart.textContent = 'Start';
+  btnStart.classList.add('primary');
+  btnReset.disabled = true;
+
+  statAttempts.textContent = '0';
+  statAvg.textContent = '—';
+  statBest.textContent = '—';
+  historyList.innerHTML = '<div style="font-size:0.72rem;color:var(--muted);text-align:center;padding:1rem 0;">No attempts yet</div>';
+}
+
+function updateStats() {
+  const validTimes = times.filter(t => t !== null);
+  statAttempts.textContent = attempts;
+
+  if (validTimes.length > 0) {
+    const avg = Math.round(validTimes.reduce((a, b) => a + b, 0) / validTimes.length);
+    statAvg.textContent = avg + 'ms';
+    const best = Math.min(...validTimes);
+    statBest.textContent = best + 'ms';
+  }
+}
+
+function addHistory(ms) {
+  // Clear placeholder
+  if (historyList.children.length === 1 && historyList.children[0].tagName !== 'DIV'.toUpperCase() === false) {
+    const p = historyList.querySelector('div');
+    if (p && p.style.textAlign === 'center') historyList.innerHTML = '';
+  }
+
+  // Remove old placeholder if it exists
+  const placeholder = historyList.querySelector('[data-placeholder]');
+  if (placeholder) placeholder.remove();
+  if (historyList.querySelector('div:not(.history-item)')) historyList.innerHTML = '';
+
+  const validTimes = times.filter(t => t !== null);
+  const isBest = ms !== null && ms === Math.min(...validTimes);
+
+  const item = document.createElement('div');
+  item.className = 'history-item' + (isBest && validTimes.length > 1 ? ' best-item' : '');
+  item.innerHTML = `
+    <span class="h-num">#${attempts}</span>
+    <span class="h-val">${ms !== null ? ms + 'ms' : 'FALSE'}</span>
+    <span class="h-badge">${ms === null ? '? early' : isBest && validTimes.length > 1 ? '? best' : ''}</span>
+  `;
+  if (ms === null) item.querySelector('.h-val').style.color = 'var(--error)';
+  historyList.prepend(item);
+}
+
+// -- Event Listeners --
+btnStart.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (state === STATES.IDLE || state === STATES.RESULT || state === STATES.ERROR) {
+    startGame();
+  } else if (state === STATES.WAITING || state === STATES.READY) {
+    // Stop
+    clearTimeout(waitTimer);
+    setState(STATES.IDLE);
+    btnStart.textContent = 'Start';
+    btnStart.classList.add('primary');
+  }
+});
+
+btnReset.addEventListener('click', (e) => {
+  e.stopPropagation();
+  resetGame();
+});
+
+target.addEventListener('click', handleClick);
+target.addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') handleClick(); });
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && document.activeElement !== btnStart && document.activeElement !== btnReset) {
+    e.preventDefault();
+    handleClick();
+  }
+});
+
+// Instructions close
+document.getElementById('start-intro-btn').addEventListener('click', () => {
+  document.getElementById('instructions-overlay').classList.add('hidden');
+});
+
+// Init
+setState(STATES.IDLE);
+</script>
+</body>
+</html>
